@@ -7,11 +7,12 @@ from nltk.stem import WordNetLemmatizer
 import warnings
 import time
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.multiclass import OneVsOneClassifier
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 import matplotlib.pyplot as plt
- 
+
 warnings.filterwarnings("ignore")
 
 
@@ -54,7 +55,7 @@ t1 = time.time()
 print('Time Take is:', t1 - t0)
 sentimentData['sentiment'] = sentimentData['sentiment'].map({'positive': 1, 'negative': 0})
 
-dataset_train, dataset_test, train_data_label, test_data_label = train_test_split(sentimentData['review'], sentimentData['sentiment'], test_size=0.20)
+dataset_train, dataset_test, train_data_label, test_data_label = train_test_split(sentimentData['review'], sentimentData['sentiment'], test_size=0.25)
 
 train = pd.DataFrame(dataset_train)
 test = pd.DataFrame(dataset_test)
@@ -75,10 +76,20 @@ clf = GridSearchCV(model, parameters, n_jobs = -1)
 clf.fit(test_ngrams, test_data_label)
 print('Optimal Lambda: ',clf.best_params_)
 
-classifier = LinearSVC(C = clf.best_params_['C'], penalty = 'l2', max_iter = 10000, class_weight = 'balanced').fit(train_ngrams, train_data_label)
+
+classifier = OneVsOneClassifier(LinearSVC(C = clf.best_params_['C'], penalty = 'l2', max_iter = 10000, class_weight = 'balanced'), n_jobs = -1).fit(train_ngrams, train_data_label)
 predictedValue = classifier.predict(test_ngrams)
 print(classifier.score(train_ngrams, train_data_label))
 print(classifier.score(test_ngrams, test_data_label))
+
+parameters = {'C':np.logspace(-10, 3,20, endpoint=True, base = 2.71828).tolist(), 'kernel': ['linear', 'rbf'], 'decision_function_shape': ['ovo', 'ovr']}
+model = SVC(class_weight = 'balanced', max_iter = 10000)
+clf = GridSearchCV(model, parameters, n_jobs = -1)
+clf.fit(test_ngrams, test_data_label)
+print('Optimal Lambda: ',clf.best_params_)
+
+classifieRBF = SVC(kernel = clf.best_params_['kernel'], C = clf.best_params_['C'], class_weight = 'balanced', max_iter = 10000, decision_function_shape = clf.best_params_['decision_function_shape']).fit(train_ngrams, train_data_label)
+print(classifieRBF.score(test_ngrams, test_data_label))
 
 tn, fp, fn, tp = confusion_matrix(test_data_label, predictedValue).ravel()
 sensitivity = tp/(tp+fn) 
